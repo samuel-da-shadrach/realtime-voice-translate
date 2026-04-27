@@ -41,33 +41,12 @@ function lastWords(text, count) {
     .trim();
 }
 
-function isIosSafari() {
-  const ua = window.navigator.userAgent;
-  const isiOS = /iPad|iPhone|iPod/.test(ua) || (ua.includes("Macintosh") && navigator.maxTouchPoints > 1);
-  const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS/.test(ua);
-  return isiOS && isSafari;
-}
-
-function isStandalone() {
-  return window.navigator.standalone === true || window.matchMedia("(display-mode: standalone)").matches;
-}
-
-function nudgeIosFullscreen() {
-  if (!isIosSafari() || isStandalone()) {
-    return;
-  }
-
-  requestAnimationFrame(() => {
-    window.scrollTo({ top: 80, left: 0, behavior: "instant" });
-  });
-}
-
 function getTargetLanguage() {
   const params = new URLSearchParams(window.location.search);
   return params.get("to") || params.get("target") || params.get("lang") || "English";
 }
 
-function getWordCount(...names) {
+function getWordCount(defaultValue, ...names) {
   const params = new URLSearchParams(window.location.search);
 
   for (const name of names) {
@@ -84,7 +63,7 @@ function getWordCount(...names) {
     }
   }
 
-  return 5;
+  return defaultValue;
 }
 
 function App() {
@@ -93,9 +72,9 @@ function App() {
   const [partialTranslation, setPartialTranslation] = useState("");
   const [error, setError] = useState("");
   const [targetLanguage, setTargetLanguage] = useState(getTargetLanguage);
-  const [transcriptWordCount, setTranscriptWordCount] = useState(() => getWordCount("transcriptWords", "sourceWords"));
+  const [transcriptWordCount, setTranscriptWordCount] = useState(() => getWordCount(0, "transcriptWords", "sourceWords"));
   const [translationWordCount, setTranslationWordCount] = useState(() =>
-    getWordCount("translationWords", "translatedWords"),
+    getWordCount(30, "translationWords", "translatedWords"),
   );
   const committedTextRef = useRef("");
   const committedTranslationRef = useRef("");
@@ -113,15 +92,11 @@ function App() {
     }
 
     syncViewportSize();
-    nudgeIosFullscreen();
-
     window.addEventListener("resize", syncViewportSize);
-    window.addEventListener("orientationchange", nudgeIosFullscreen);
     window.visualViewport?.addEventListener("resize", syncViewportSize);
 
     return () => {
       window.removeEventListener("resize", syncViewportSize);
-      window.removeEventListener("orientationchange", nudgeIosFullscreen);
       window.visualViewport?.removeEventListener("resize", syncViewportSize);
     };
   }, []);
@@ -264,7 +239,6 @@ function App() {
 
   async function handleStart() {
     try {
-      nudgeIosFullscreen();
       await start();
     } catch (err) {
       setError(err.message || "Could not start transcription");
@@ -272,7 +246,7 @@ function App() {
   }
 
   return (
-    <main className="screen" onPointerDown={nudgeIosFullscreen} onDoubleClick={() => scribe.disconnect()}>
+    <main className="screen" onDoubleClick={() => scribe.disconnect()}>
       {scribe.isConnected ? (
         <div className="captions" aria-live="polite">
           {transcriptWordCount > 0 ? <div className="words transcript">{visibleText || " "}</div> : null}
