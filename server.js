@@ -18,6 +18,8 @@ const elevenlabs = new ElevenLabsClient({
   apiKey: process.env.ELEVENLABS_API_KEY,
 });
 
+app.use(express.json({ limit: "64kb" }));
+
 app.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
@@ -34,6 +36,89 @@ app.get("/scribe-token", async (_req, res) => {
   } catch (error) {
     console.error("Failed to create Scribe token:", error);
     res.status(502).json({ error: "Failed to create Scribe token" });
+  }
+});
+
+function extractOutputText(response) {
+  if (typeof response.output_text === "string") {
+    return response.output_text;
+  }
+
+  return (response.output || [])
+    .flatMap((item) => item.content || [])
+    .map((content) => content.text || "")
+    .join("")
+    .trim();
+}
+
+app.post("/translate", async (req, res) => {
+  if (!process.env.OPENAI_API_KEY) {
+    res.status(500).json({ error: "OPENAI_API_KEY is not set" });
+    return;
+  }
+
+  const {
+    text = "",
+    targetLanguage = "English",
+    mode = "partial",
+    stableSource = "",
+    stableTranslation = "",
+  } = req.body || {};
+
+  const sourceText = String(text).trim();
+  const destination = String(targetLanguage || "English").trim() || "English";
+
+  if (!sourceText) {
+    res.json({ translation: "" });
+    return;
+  }
+
+  try {
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-5.5",
+        reasoning: { effort: "none" },
+        max_output_tokens: 220,
+        instructions: [
+          `Translate speech transcription text into ${destination}.`,
+          "Return only the translated text, with no quotes, labels, markdown, notes, or alternatives.",
+          "Preserve meaning, names, numbers, punctuation, and tone. If the source is already in the target language, return it naturally unchanged.",
+          mode === "committed"
+            ? "This is a stable committed segment. Produce the final translation for only this segment."
+            : "This is an unstable partial live segment. Translate speculatively and naturally, but do not add content that has not been spoken.",
+        ].join(" "),
+        input: [
+          {
+            role: "user",
+            content: [
+              `Target language: ${destination}`,
+              `Mode: ${mode === "committed" ? "committed" : "partial"}`,
+              `Stable source context: ${String(stableSource).slice(-1200) || "(none)"}`,
+              `Stable translated context: ${String(stableTranslation).slice(-1200) || "(none)"}`,
+              `Text to translate now: ${sourceText}`,
+            ].join("\n"),
+          },
+        ],
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error("OpenAI translation failed:", data);
+      res.status(502).json({ error: "Translation failed" });
+      return;
+    }
+
+    res.json({ translation: extractOutputText(data) });
+  } catch (error) {
+    console.error("OpenAI translation request failed:", error);
+    res.status(502).json({ error: "Translation request failed" });
   }
 });
 

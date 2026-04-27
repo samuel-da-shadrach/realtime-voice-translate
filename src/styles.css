@@ -28,6 +28,22 @@ button {
   font: inherit;
 }
 
+input {
+  min-width: 0;
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: #111111;
+  color: #ffffff;
+  font: inherit;
+  font-size: 18px;
+  outline: none;
+}
+
+input:focus {
+  border-color: #8ee7ff;
+}
+
 .screen {
   position: fixed;
   inset: 0;
@@ -40,14 +56,55 @@ button {
   background: #050505;
 }
 
-.words {
+.captions {
   width: 100%;
+  display: grid;
+  gap: clamp(14px, 4vh, 34px);
+}
+
+.captions:empty::before {
+  content: " ";
+}
+
+.captions:has(.words:only-child) .words {
+  font-size: clamp(34px, 12vw, 108px);
+}
+
+.words {
   text-align: center;
   color: #ffffff;
-  font-size: clamp(34px, 12vw, 108px);
   font-weight: 800;
   line-height: 1.02;
   overflow-wrap: anywhere;
+}
+
+.transcript {
+  font-size: clamp(28px, 9vw, 78px);
+}
+
+.translation {
+  color: #8ee7ff;
+  font-size: clamp(26px, 8vw, 68px);
+}
+
+.settings {
+  width: min(92vw, 620px);
+  display: grid;
+  grid-template-columns: 1fr 140px 140px auto;
+  align-items: end;
+  gap: 14px;
+}
+
+.field {
+  display: grid;
+  gap: 7px;
+}
+
+.field span {
+  color: #bdbdbd;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
 .start {
@@ -60,6 +117,17 @@ button {
   color: #050505;
   font-size: 24px;
   font-weight: 750;
+}
+
+@media (max-width: 720px) {
+  .settings {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .field:first-child,
+  .start {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (orientation: portrait) {
