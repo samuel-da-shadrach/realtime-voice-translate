@@ -41,46 +41,89 @@ function lastWords(text, count) {
     .trim();
 }
 
-function getTargetLanguage() {
+function getLanguagePair() {
   const params = new URLSearchParams(window.location.search);
-  return params.get("to") || params.get("target") || params.get("lang") || "English";
+  return params.get("pair") || params.get("languagePair") || params.get("to") || params.get("target") || "English/Hindi";
 }
 
-function getWordCount(defaultValue, ...names) {
-  const params = new URLSearchParams(window.location.search);
+function normalizePairLanguage(value) {
+  const normalized = String(value || "").trim().toLowerCase();
 
-  for (const name of names) {
-    const raw = params.get(name);
-
-    if (raw === null) {
-      continue;
-    }
-
-    const parsed = Number.parseInt(raw, 10);
-
-    if (Number.isFinite(parsed) && parsed >= 0) {
-      return parsed;
-    }
+  if (normalized === "en" || normalized === "eng" || normalized === "english") {
+    return "English";
   }
 
-  return defaultValue;
+  if (normalized === "hi" || normalized === "hin" || normalized === "hindi") {
+    return "Hindi";
+  }
+
+  return "";
+}
+
+function parseLanguagePair(value) {
+  const parts = String(value || "")
+    .split(/\s*(?:\/|,|->|→|\bto\b|-)\s*/i)
+    .map(normalizePairLanguage)
+    .filter(Boolean);
+
+  if (parts.length >= 2) {
+    return [parts[0], parts[1]];
+  }
+
+  return ["English", "Hindi"];
+}
+
+function languageFromCode(code) {
+  const normalized = String(code || "").trim().toLowerCase();
+
+  if (normalized === "en" || normalized === "eng" || normalized.startsWith("en-")) {
+    return "English";
+  }
+
+  if (normalized === "hi" || normalized === "hin" || normalized.startsWith("hi-")) {
+    return "Hindi";
+  }
+
+  return "";
+}
+
+function inferLanguageFromText(text) {
+  if (/[\u0900-\u097F]/.test(text)) {
+    return "Hindi";
+  }
+
+  if (/[A-Za-z]/.test(text)) {
+    return "English";
+  }
+
+  return "";
+}
+
+function oppositeLanguage(language, pair) {
+  if (language === pair[0]) {
+    return pair[1];
+  }
+
+  if (language === pair[1]) {
+    return pair[0];
+  }
+
+  return pair[1];
 }
 
 function App() {
   const [committedText, setCommittedText] = useState("");
-  const [committedTranslation, setCommittedTranslation] = useState("");
-  const [partialTranslation, setPartialTranslation] = useState("");
+  const [englishTranslation, setEnglishTranslation] = useState("");
+  const [hindiTranslation, setHindiTranslation] = useState("");
   const [error, setError] = useState("");
-  const [targetLanguage, setTargetLanguage] = useState(getTargetLanguage);
-  const [transcriptWordCount, setTranscriptWordCount] = useState(() => getWordCount(0, "transcriptWords", "sourceWords"));
-  const [translationWordCount, setTranslationWordCount] = useState(() =>
-    getWordCount(30, "translationWords", "translatedWords"),
-  );
+  const [languagePair, setLanguagePair] = useState(getLanguagePair);
+  const parsedLanguagePair = useMemo(() => parseLanguagePair(languagePair), [languagePair]);
   const committedTextRef = useRef("");
-  const committedTranslationRef = useRef("");
+  const englishTranslationRef = useRef("");
+  const hindiTranslationRef = useRef("");
   const partialTimerRef = useRef(null);
-  const translationSequenceRef = useRef(0);
-  const latestRenderedTranslationRef = useRef(0);
+  const translationSequenceRef = useRef({ English: 0, Hindi: 0 });
+  const latestRenderedTranslationRef = useRef({ English: 0, Hindi: 0 });
 
   useEffect(() => {
     function syncViewportSize() {
@@ -101,7 +144,18 @@ function App() {
     };
   }, []);
 
-  async function translateText({ text, mode }) {
+  function getTargetLanguageForText(text, languageHint) {
+    const sourceLanguage = normalizePairLanguage(languageHint) || inferLanguageFromText(text);
+
+    if (!sourceLanguage) {
+      window.alert("Could not detect whether the transcript is English or Hindi.");
+      return "";
+    }
+
+    return oppositeLanguage(sourceLanguage, parsedLanguagePair);
+  }
+
+  async function translateText({ text, mode, targetLanguage }) {
     const response = await fetch("/translate", {
       method: "POST",
       headers: {
@@ -112,7 +166,7 @@ function App() {
         mode,
         targetLanguage,
         stableSource: committedTextRef.current,
-        stableTranslation: committedTranslationRef.current,
+        stableTranslation: targetLanguage === "English" ? englishTranslationRef.current : hindiTranslationRef.current,
       }),
     });
 
@@ -124,53 +178,61 @@ function App() {
     return data.translation || "";
   }
 
-  async function translateLatest({ text, mode }) {
+  async function translateLatest({ text, mode, targetLanguage }) {
     const source = text.trim();
 
     if (!source) {
       return;
     }
 
-    const sequence = translationSequenceRef.current + 1;
-    translationSequenceRef.current = sequence;
+    const sequence = (translationSequenceRef.current[targetLanguage] || 0) + 1;
+    translationSequenceRef.current[targetLanguage] = sequence;
 
     try {
-      const translation = await translateText({ text: source, mode });
+      const translation = await translateText({ text: source, mode, targetLanguage });
 
-      if (sequence < latestRenderedTranslationRef.current) {
+      if (sequence < (latestRenderedTranslationRef.current[targetLanguage] || 0)) {
         return;
       }
 
-      latestRenderedTranslationRef.current = sequence;
-      if (mode === "committed") {
-        committedTranslationRef.current = translation;
-        setCommittedTranslation(translation);
+      latestRenderedTranslationRef.current[targetLanguage] = sequence;
+      if (targetLanguage === "English") {
+        englishTranslationRef.current = translation;
+        setEnglishTranslation(translation);
+      } else if (targetLanguage === "Hindi") {
+        hindiTranslationRef.current = translation;
+        setHindiTranslation(translation);
       }
-      setPartialTranslation(translation);
     } catch (err) {
       console.warn(`${mode} translation failed:`, err);
     }
   }
 
-  function translatePartial(text) {
+  function translatePartial(text, languageHint = "") {
     const partial = text.trim();
 
     window.clearTimeout(partialTimerRef.current);
 
     if (!partial) {
-      setPartialTranslation("");
       return;
     }
 
     partialTimerRef.current = window.setTimeout(() => {
+      const targetLanguage = getTargetLanguageForText(partial, languageHint);
+
+      if (!targetLanguage) {
+        return;
+      }
+
       translateLatest({
         text: `${committedTextRef.current} ${partial}`.trim(),
         mode: "partial",
+        targetLanguage,
       });
     }, 220);
   }
 
-  function translateCommitted(text) {
+  function translateCommitted(text, languageHint = "") {
     const segment = text.trim();
 
     if (!segment) {
@@ -179,46 +241,62 @@ function App() {
 
     window.clearTimeout(partialTimerRef.current);
 
+    const targetLanguage = getTargetLanguageForText(segment, languageHint);
+
+    if (!targetLanguage) {
+      return;
+    }
+
     translateLatest({
       text: committedTextRef.current,
       mode: "committed",
+      targetLanguage,
     });
+  }
+
+  function handleCommittedTranscript(data) {
+    const text = data.text || "";
+    const sourceLanguage = languageFromCode(data.language_code || data.languageCode);
+
+    const next = `${committedTextRef.current} ${text}`.trim();
+    committedTextRef.current = next;
+    setCommittedText(next);
+    translateCommitted(text, sourceLanguage);
   }
 
   const scribe = useScribe({
     modelId: "scribe_v2_realtime",
+    includeTimestamps: true,
     onPartialTranscript: (data) => {
-      translatePartial(data.text || "");
+      translatePartial(data.text || "", languageFromCode(data.language_code || data.languageCode));
     },
-    onCommittedTranscript: (data) => {
-      const next = `${committedTextRef.current} ${data.text}`.trim();
-      committedTextRef.current = next;
-      setCommittedText(next);
-      translateCommitted(data.text || "");
-    },
+    onCommittedTranscriptWithTimestamps: handleCommittedTranscript,
     onError: (event) => {
       setError(event?.message || event?.error || "Transcription error");
     },
   });
 
-  const visibleText = useMemo(() => {
-    const partial = scribe.partialTranscript || "";
-    return lastWords(`${committedText} ${partial}`, transcriptWordCount);
-  }, [committedText, scribe.partialTranscript, transcriptWordCount]);
+  const visibleEnglishTranslation = useMemo(() => {
+    return lastWords(englishTranslation, 15);
+  }, [englishTranslation]);
 
-  const visibleTranslation = useMemo(() => {
-    return lastWords(partialTranslation || committedTranslation, translationWordCount);
-  }, [committedTranslation, partialTranslation, translationWordCount]);
+  const visibleHindiTranslation = useMemo(() => {
+    return lastWords(hindiTranslation, 15);
+  }, [hindiTranslation]);
 
   async function start() {
     setError("");
     setCommittedText("");
-    setCommittedTranslation("");
-    setPartialTranslation("");
+    setEnglishTranslation("");
+    setHindiTranslation("");
     committedTextRef.current = "";
-    committedTranslationRef.current = "";
-    translationSequenceRef.current += 1;
-    latestRenderedTranslationRef.current = translationSequenceRef.current;
+    englishTranslationRef.current = "";
+    hindiTranslationRef.current = "";
+    translationSequenceRef.current = {
+      English: translationSequenceRef.current.English + 1,
+      Hindi: translationSequenceRef.current.Hindi + 1,
+    };
+    latestRenderedTranslationRef.current = { ...translationSequenceRef.current };
     window.clearTimeout(partialTimerRef.current);
     const response = await fetch("/scribe-token");
     if (!response.ok) {
@@ -249,41 +327,19 @@ function App() {
     <main className="screen" onDoubleClick={() => scribe.disconnect()}>
       {scribe.isConnected ? (
         <div className="captions" aria-live="polite">
-          {transcriptWordCount > 0 ? <div className="words transcript">{visibleText || " "}</div> : null}
-          {translationWordCount > 0 ? <div className="words translation">{visibleTranslation || " "}</div> : null}
+          <div className="words translation english">{visibleEnglishTranslation || " "}</div>
+          <div className="words translation hindi">{visibleHindiTranslation || " "}</div>
         </div>
       ) : (
         <form className="settings" onSubmit={(event) => event.preventDefault()}>
           <label className="field">
-            <span>Translate to</span>
+            <span>Language pair</span>
             <input
               type="text"
-              value={targetLanguage}
+              value={languagePair}
               autoCapitalize="words"
               autoComplete="off"
-              onChange={(event) => setTargetLanguage(event.target.value)}
-            />
-          </label>
-          <label className="field">
-            <span>Transcript words</span>
-            <input
-              type="number"
-              inputMode="numeric"
-              min="0"
-              step="1"
-              value={transcriptWordCount}
-              onChange={(event) => setTranscriptWordCount(Math.max(0, Number.parseInt(event.target.value || "0", 10)))}
-            />
-          </label>
-          <label className="field">
-            <span>Translation words</span>
-            <input
-              type="number"
-              inputMode="numeric"
-              min="0"
-              step="1"
-              value={translationWordCount}
-              onChange={(event) => setTranslationWordCount(Math.max(0, Number.parseInt(event.target.value || "0", 10)))}
+              onChange={(event) => setLanguagePair(event.target.value)}
             />
           </label>
           <button className="start" type="button" onClick={handleStart}>
