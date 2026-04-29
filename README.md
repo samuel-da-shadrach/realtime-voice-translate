@@ -1,8 +1,10 @@
-# Yet Another Translate
+# Realtime speech translate
 
-Minimal full-screen mobile speech translator for ElevenLabs Scribe v2 Realtime.
+Minimal full-screen mobile speech translator. 
 
-This app was written using OpenAI Codex GPT-5.5.
+Uses ElevenLabs Scribe v2 Realtime and OpenAI GPT-5.4-mini
+
+This app and README was written using OpenAI Codex GPT-5.5. **May contain hallucinations!**
 
 ## What It Does
 

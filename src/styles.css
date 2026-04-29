@@ -24,6 +24,7 @@ button {
 
 input,
 select {
+  width: 100%;
   min-width: 0;
   border: 1px solid #3a3a3a;
   border-radius: 8px;
@@ -75,7 +76,7 @@ select:focus {
 }
 
 .settings {
-  width: min(92vw, 460px);
+  width: min(100%, 460px);
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: end;
@@ -95,6 +96,7 @@ select:focus {
 }
 
 .start {
+  width: 100%;
   min-width: 148px;
   min-height: 64px;
   border: 1px solid #ffffff;
