@@ -1,7 +1,33 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { useScribe } from "@elevenlabs/react";
+import { CommitStrategy, useScribe } from "@elevenlabs/react";
 import "./styles.css";
+
+const SCRIPT_BY_LANGUAGE = {
+  English: "Latin",
+  Hindi: "Devanagari",
+  Russian: "Cyrillic",
+  Ukrainian: "Cyrillic",
+  Bulgarian: "Cyrillic",
+  Serbian: "Cyrillic",
+  Arabic: "Arabic",
+  Persian: "Arabic",
+  Urdu: "Arabic",
+  Chinese: "Han",
+  Japanese: "Han",
+  Korean: "Hangul",
+};
+
+const SCRIPT_PATTERNS = [
+  ["Devanagari", /\p{Script=Devanagari}/u],
+  ["Latin", /\p{Script=Latin}/u],
+  ["Cyrillic", /\p{Script=Cyrillic}/u],
+  ["Arabic", /\p{Script=Arabic}/u],
+  ["Han", /\p{Script=Han}/u],
+  ["Hangul", /\p{Script=Hangul}/u],
+  ["Hebrew", /\p{Script=Hebrew}/u],
+  ["Thai", /\p{Script=Thai}/u],
+];
 
 function lastWords(text, count) {
   if (count <= 0) {
@@ -46,7 +72,7 @@ function getLanguagePair() {
   return params.get("pair") || params.get("languagePair") || params.get("to") || params.get("target") || "English/Hindi";
 }
 
-function normalizePairLanguage(value) {
+function normalizeLanguage(value) {
   const normalized = String(value || "").trim().toLowerCase();
 
   if (normalized === "en" || normalized === "eng" || normalized === "english") {
@@ -57,13 +83,17 @@ function normalizePairLanguage(value) {
     return "Hindi";
   }
 
+  if (normalized === "ru" || normalized === "rus" || normalized === "russian") {
+    return "Russian";
+  }
+
   return "";
 }
 
 function parseLanguagePair(value) {
   const parts = String(value || "")
     .split(/\s*(?:\/|,|->|→|\bto\b|-)\s*/i)
-    .map(normalizePairLanguage)
+    .map(normalizeLanguage)
     .filter(Boolean);
 
   if (parts.length >= 2) {
@@ -73,57 +103,54 @@ function parseLanguagePair(value) {
   return ["English", "Hindi"];
 }
 
-function languageFromCode(code) {
-  const normalized = String(code || "").trim().toLowerCase();
+function detectDominantScript(text) {
+  const counts = new Map();
 
-  if (normalized === "en" || normalized === "eng" || normalized.startsWith("en-")) {
-    return "English";
+  for (const char of text) {
+    for (const [script, pattern] of SCRIPT_PATTERNS) {
+      if (pattern.test(char)) {
+        counts.set(script, (counts.get(script) || 0) + 1);
+        break;
+      }
+    }
   }
 
-  if (normalized === "hi" || normalized === "hin" || normalized.startsWith("hi-")) {
-    return "Hindi";
+  let bestScript = "";
+  let bestCount = 0;
+
+  for (const [script, count] of counts) {
+    if (count > bestCount) {
+      bestScript = script;
+      bestCount = count;
+    }
   }
 
-  return "";
+  return bestScript;
 }
 
-function inferLanguageFromText(text) {
-  if (/[\u0900-\u097F]/.test(text)) {
-    return "Hindi";
+function detectLanguageByScript(text, pair) {
+  const script = detectDominantScript(text);
+
+  if (!script) {
+    return "";
   }
 
-  if (/[A-Za-z]/.test(text)) {
-    return "English";
-  }
-
-  return "";
+  return pair.find((language) => SCRIPT_BY_LANGUAGE[language] === script) || "";
 }
 
 function oppositeLanguage(language, pair) {
-  if (language === pair[0]) {
-    return pair[1];
-  }
-
-  if (language === pair[1]) {
-    return pair[0];
-  }
-
-  return pair[1];
+  return language === pair[0] ? pair[1] : pair[0];
 }
 
 function App() {
-  const [committedText, setCommittedText] = useState("");
-  const [englishTranslation, setEnglishTranslation] = useState("");
-  const [hindiTranslation, setHindiTranslation] = useState("");
-  const [error, setError] = useState("");
   const [languagePair, setLanguagePair] = useState(getLanguagePair);
+  const [displayText, setDisplayText] = useState("");
+  const [error, setError] = useState("");
   const parsedLanguagePair = useMemo(() => parseLanguagePair(languagePair), [languagePair]);
-  const committedTextRef = useRef("");
-  const englishTranslationRef = useRef("");
-  const hindiTranslationRef = useRef("");
-  const partialTimerRef = useRef(null);
-  const translationSequenceRef = useRef({ English: 0, Hindi: 0 });
-  const latestRenderedTranslationRef = useRef({ English: 0, Hindi: 0 });
+  const currentSegmentRef = useRef(0);
+  const nextPartialStartsSegmentRef = useRef(false);
+  const latestPartialOrderRef = useRef(0);
+  const displayedPartialOrderRef = useRef(0);
 
   useEffect(() => {
     function syncViewportSize() {
@@ -144,160 +171,101 @@ function App() {
     };
   }, []);
 
-  function getTargetLanguageForText(text, languageHint) {
-    const sourceLanguage = normalizePairLanguage(languageHint) || inferLanguageFromText(text);
+  async function translatePartial({ text, sourceLanguage, targetLanguage, segment, order }) {
+    try {
+      const response = await fetch("/translate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text,
+          sourceLanguage,
+          targetLanguage,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Translation failed");
+      }
+
+      const data = await response.json();
+
+      if (segment !== currentSegmentRef.current || order <= displayedPartialOrderRef.current) {
+        return;
+      }
+
+      displayedPartialOrderRef.current = order;
+      setDisplayText(data.translation || "");
+    } catch (err) {
+      console.warn("Partial translation failed:", err);
+    }
+  }
+
+  function handlePartialTranscript(data) {
+    const text = (data.text || "").trim();
+
+    if (!text) {
+      return;
+    }
+
+    if (nextPartialStartsSegmentRef.current) {
+      currentSegmentRef.current += 1;
+      latestPartialOrderRef.current = 0;
+      displayedPartialOrderRef.current = 0;
+      nextPartialStartsSegmentRef.current = false;
+    }
+
+    const order = latestPartialOrderRef.current + 1;
+    latestPartialOrderRef.current = order;
+
+    const sourceLanguage = detectLanguageByScript(text, parsedLanguagePair);
 
     if (!sourceLanguage) {
-      window.alert("Could not detect whether the transcript is English or Hindi.");
-      return "";
-    }
-
-    return oppositeLanguage(sourceLanguage, parsedLanguagePair);
-  }
-
-  async function translateText({ text, mode, targetLanguage }) {
-    const response = await fetch("/translate", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        text,
-        mode,
-        targetLanguage,
-        stableSource: committedTextRef.current,
-        stableTranslation: targetLanguage === "English" ? englishTranslationRef.current : hindiTranslationRef.current,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error("Translation failed");
-    }
-
-    const data = await response.json();
-    return data.translation || "";
-  }
-
-  async function translateLatest({ text, mode, targetLanguage }) {
-    const source = text.trim();
-
-    if (!source) {
-      return;
-    }
-
-    const sequence = (translationSequenceRef.current[targetLanguage] || 0) + 1;
-    translationSequenceRef.current[targetLanguage] = sequence;
-
-    try {
-      const translation = await translateText({ text: source, mode, targetLanguage });
-
-      if (sequence < (latestRenderedTranslationRef.current[targetLanguage] || 0)) {
-        return;
+      if (order > displayedPartialOrderRef.current) {
+        displayedPartialOrderRef.current = order;
+        setDisplayText("???");
       }
-
-      latestRenderedTranslationRef.current[targetLanguage] = sequence;
-      if (targetLanguage === "English") {
-        englishTranslationRef.current = translation;
-        setEnglishTranslation(translation);
-      } else if (targetLanguage === "Hindi") {
-        hindiTranslationRef.current = translation;
-        setHindiTranslation(translation);
-      }
-    } catch (err) {
-      console.warn(`${mode} translation failed:`, err);
-    }
-  }
-
-  function translatePartial(text, languageHint = "") {
-    const partial = text.trim();
-
-    window.clearTimeout(partialTimerRef.current);
-
-    if (!partial) {
       return;
     }
 
-    partialTimerRef.current = window.setTimeout(() => {
-      const targetLanguage = getTargetLanguageForText(partial, languageHint);
+    const targetLanguage = oppositeLanguage(sourceLanguage, parsedLanguagePair);
 
-      if (!targetLanguage) {
-        return;
-      }
-
-      translateLatest({
-        text: `${committedTextRef.current} ${partial}`.trim(),
-        mode: "partial",
-        targetLanguage,
-      });
-    }, 220);
-  }
-
-  function translateCommitted(text, languageHint = "") {
-    const segment = text.trim();
-
-    if (!segment) {
-      return;
-    }
-
-    window.clearTimeout(partialTimerRef.current);
-
-    const targetLanguage = getTargetLanguageForText(segment, languageHint);
-
-    if (!targetLanguage) {
-      return;
-    }
-
-    translateLatest({
-      text: committedTextRef.current,
-      mode: "committed",
+    translatePartial({
+      text,
+      sourceLanguage,
       targetLanguage,
+      segment: currentSegmentRef.current,
+      order,
     });
   }
 
-  function handleCommittedTranscript(data) {
-    const text = data.text || "";
-    const sourceLanguage = languageFromCode(data.language_code || data.languageCode);
-
-    const next = `${committedTextRef.current} ${text}`.trim();
-    committedTextRef.current = next;
-    setCommittedText(next);
-    translateCommitted(text, sourceLanguage);
+  function handleCommittedTranscript() {
+    nextPartialStartsSegmentRef.current = true;
   }
 
   const scribe = useScribe({
     modelId: "scribe_v2_realtime",
-    includeTimestamps: true,
-    onPartialTranscript: (data) => {
-      translatePartial(data.text || "", languageFromCode(data.language_code || data.languageCode));
-    },
-    onCommittedTranscriptWithTimestamps: handleCommittedTranscript,
+    commitStrategy: CommitStrategy.VAD,
+    onPartialTranscript: handlePartialTranscript,
+    onCommittedTranscript: handleCommittedTranscript,
     onError: (event) => {
       setError(event?.message || event?.error || "Transcription error");
     },
   });
 
-  const visibleEnglishTranslation = useMemo(() => {
-    return lastWords(englishTranslation, 15);
-  }, [englishTranslation]);
-
-  const visibleHindiTranslation = useMemo(() => {
-    return lastWords(hindiTranslation, 15);
-  }, [hindiTranslation]);
+  const visibleText = useMemo(() => {
+    return lastWords(displayText, 30);
+  }, [displayText]);
 
   async function start() {
     setError("");
-    setCommittedText("");
-    setEnglishTranslation("");
-    setHindiTranslation("");
-    committedTextRef.current = "";
-    englishTranslationRef.current = "";
-    hindiTranslationRef.current = "";
-    translationSequenceRef.current = {
-      English: translationSequenceRef.current.English + 1,
-      Hindi: translationSequenceRef.current.Hindi + 1,
-    };
-    latestRenderedTranslationRef.current = { ...translationSequenceRef.current };
-    window.clearTimeout(partialTimerRef.current);
+    setDisplayText("");
+    currentSegmentRef.current = 0;
+    nextPartialStartsSegmentRef.current = false;
+    latestPartialOrderRef.current = 0;
+    displayedPartialOrderRef.current = 0;
+
     const response = await fetch("/scribe-token");
     if (!response.ok) {
       throw new Error("Could not create Scribe token");
@@ -308,6 +276,7 @@ function App() {
 
     await scribe.connect({
       token,
+      commitStrategy: CommitStrategy.VAD,
       microphone: {
         echoCancellation: true,
         noiseSuppression: true,
@@ -326,9 +295,8 @@ function App() {
   return (
     <main className="screen" onDoubleClick={() => scribe.disconnect()}>
       {scribe.isConnected ? (
-        <div className="captions" aria-live="polite">
-          <div className="words translation english">{visibleEnglishTranslation || " "}</div>
-          <div className="words translation hindi">{visibleHindiTranslation || " "}</div>
+        <div className="caption" aria-live="polite">
+          {visibleText || " "}
         </div>
       ) : (
         <form className="settings" onSubmit={(event) => event.preventDefault()}>
@@ -345,6 +313,7 @@ function App() {
           <button className="start" type="button" onClick={handleStart}>
             {error || "Start"}
           </button>
+          <p className="setup-note">Recommended: Hold phone horizontally. Add to Home Screen for fullscreen mode</p>
         </form>
       )}
     </main>

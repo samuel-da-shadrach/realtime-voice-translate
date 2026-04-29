@@ -1,6 +1,6 @@
 # Yet Another Translate
 
-Minimal full-screen mobile transcription display for ElevenLabs Scribe v2 Realtime.
+Minimal full-screen mobile speech translator for ElevenLabs Scribe v2 Realtime.
 
 This app was written using OpenAI Codex GPT-5.5.
 
@@ -8,9 +8,15 @@ This app was written using OpenAI Codex GPT-5.5.
 
 - Uses ElevenLabs Scribe v2 Realtime through the official client-side token flow.
 - Keeps the ElevenLabs API key on the server.
-- Shows only the last five word-like transcription segments.
-- Supports multilingual transcription display, including languages that do not use spaces between words.
-- Optimizes the display for horizontal mobile use and iOS Safari fullscreen behavior.
+- Uses VAD and partial transcripts.
+- Detects the source language from the script of each partial transcript.
+- Sends each partial transcript to OpenAI for translation without waiting for earlier partials.
+- Uses `gpt-5.4-mini` with reasoning effort `none` for translation.
+- Displays only the latest available translation for the latest segment.
+- Shows the last 30 word-like translated segments.
+- Shows `???` if script-based language detection fails for the latest partial.
+- Defaults to the `English/Hindi` language pair.
+- Optimizes the display for mobile use, with a horizontal phone recommendation and Add to Home Screen note for fullscreen mode.
 
 ## Run
 

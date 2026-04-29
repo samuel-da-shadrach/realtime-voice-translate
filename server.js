@@ -59,13 +59,12 @@ app.post("/translate", async (req, res) => {
 
   const {
     text = "",
+    sourceLanguage = "",
     targetLanguage = "English",
-    mode = "partial",
-    stableSource = "",
-    stableTranslation = "",
   } = req.body || {};
 
   const sourceText = String(text).trim();
+  const source = String(sourceLanguage || "").trim();
   const destination = String(targetLanguage || "English").trim() || "English";
 
   if (!sourceText) {
@@ -81,26 +80,21 @@ app.post("/translate", async (req, res) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-5.5",
+        model: "gpt-5.4-mini",
         reasoning: { effort: "none" },
         max_output_tokens: 220,
         instructions: [
-          `Translate speech transcription text into ${destination}.`,
+          `Translate speech transcription text from ${source || "the source language"} into ${destination}.`,
           "Return only the translated text, with no quotes, labels, markdown, notes, or alternatives.",
-          "Preserve meaning, names, numbers, punctuation, and tone. If the source is already in the target language, return it naturally unchanged.",
-          mode === "committed"
-            ? "This is a stable committed segment. Produce the final translation for only this segment."
-            : "This is an unstable partial live segment. Translate speculatively and naturally, but do not add content that has not been spoken.",
+          "Preserve meaning, names, numbers, punctuation, and tone.",
         ].join(" "),
         input: [
           {
             role: "user",
             content: [
+              `Source language: ${source || "unknown"}`,
               `Target language: ${destination}`,
-              `Mode: ${mode === "committed" ? "committed" : "partial"}`,
-              `Stable source context: ${String(stableSource).slice(-1200) || "(none)"}`,
-              `Stable translated context: ${String(stableTranslation).slice(-1200) || "(none)"}`,
-              `Text to translate now: ${sourceText}`,
+              `Partial transcript: ${sourceText}`,
             ].join("\n"),
           },
         ],
