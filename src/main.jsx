@@ -154,7 +154,10 @@ function App() {
   const [languagePair, setLanguagePair] = useState(() => normalizeLanguagePairValue(getLanguagePair()));
   const [displayText, setDisplayText] = useState("");
   const [error, setError] = useState("");
+  const [showSettings, setShowSettings] = useState(true);
+  const [isStarting, setIsStarting] = useState(false);
   const parsedLanguagePair = useMemo(() => parseLanguagePair(languagePair), [languagePair]);
+  const conversationRef = useRef(0);
   const currentSegmentRef = useRef(0);
   const nextPartialStartsSegmentRef = useRef(false);
   const latestPartialOrderRef = useRef(0);
@@ -179,7 +182,19 @@ function App() {
     };
   }, []);
 
-  async function translatePartial({ text, sourceLanguage, targetLanguage, segment, order }) {
+  function resetConversation() {
+    const conversation = conversationRef.current + 1;
+    conversationRef.current = conversation;
+    setError("");
+    setDisplayText("");
+    currentSegmentRef.current = 0;
+    nextPartialStartsSegmentRef.current = false;
+    latestPartialOrderRef.current = 0;
+    displayedPartialOrderRef.current = 0;
+    return conversation;
+  }
+
+  async function translatePartial({ text, sourceLanguage, targetLanguage, conversation, segment, order }) {
     try {
       const response = await fetch("/translate", {
         method: "POST",
@@ -199,7 +214,11 @@ function App() {
 
       const data = await response.json();
 
-      if (segment !== currentSegmentRef.current || order <= displayedPartialOrderRef.current) {
+      if (
+        conversation !== conversationRef.current ||
+        segment !== currentSegmentRef.current ||
+        order <= displayedPartialOrderRef.current
+      ) {
         return;
       }
 
@@ -243,6 +262,7 @@ function App() {
       text,
       sourceLanguage,
       targetLanguage,
+      conversation: conversationRef.current,
       segment: currentSegmentRef.current,
       order,
     });
@@ -262,25 +282,53 @@ function App() {
     },
   });
 
+  useEffect(() => {
+    function clearForLifecycleChange() {
+      resetConversation();
+      scribe.disconnect();
+      setIsStarting(false);
+      setShowSettings(true);
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "hidden") {
+        clearForLifecycleChange();
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pagehide", clearForLifecycleChange);
+    window.addEventListener("beforeunload", clearForLifecycleChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pagehide", clearForLifecycleChange);
+      window.removeEventListener("beforeunload", clearForLifecycleChange);
+    };
+  }, [scribe]);
+
   const visibleText = useMemo(() => {
     return lastWords(displayText, 30);
   }, [displayText]);
 
   async function start() {
-    setError("");
-    setDisplayText("");
-    currentSegmentRef.current = 0;
-    nextPartialStartsSegmentRef.current = false;
-    latestPartialOrderRef.current = 0;
-    displayedPartialOrderRef.current = 0;
+    const conversation = resetConversation();
 
     const response = await fetch("/scribe-token");
     if (!response.ok) {
       throw new Error("Could not create Scribe token");
     }
 
+    if (conversation !== conversationRef.current) {
+      return;
+    }
+
     const tokenResponse = await response.json();
     const token = tokenResponse.token || tokenResponse;
+
+    if (conversation !== conversationRef.current) {
+      return;
+    }
 
     await scribe.connect({
       token,
@@ -290,22 +338,48 @@ function App() {
         noiseSuppression: true,
       },
     });
+
+    if (conversation !== conversationRef.current) {
+      scribe.disconnect();
+      return;
+    }
+
+    setShowSettings(false);
   }
 
   async function handleStart() {
+    if (isStarting) {
+      return;
+    }
+
+    setIsStarting(true);
     try {
       await start();
     } catch (err) {
       setError(err.message || "Could not start transcription");
+    } finally {
+      setIsStarting(false);
     }
   }
 
+  function handleSettings() {
+    resetConversation();
+    scribe.disconnect();
+    setIsStarting(false);
+    setShowSettings(true);
+  }
+
   return (
-    <main className="screen" onDoubleClick={() => scribe.disconnect()}>
-      {scribe.isConnected ? (
-        <div className="caption" aria-live="polite">
-          {visibleText || " "}
-        </div>
+    <main className="screen" onDoubleClick={handleSettings}>
+      {scribe.isConnected && !showSettings ? (
+        <>
+          <button className="settings-button" type="button" onClick={handleSettings}>
+            Settings
+          </button>
+          <div className="caption" aria-live="polite">
+            {visibleText || " "}
+          </div>
+        </>
       ) : (
         <form className="settings" onSubmit={(event) => event.preventDefault()}>
           <label className="field">
@@ -321,8 +395,8 @@ function App() {
               ))}
             </select>
           </label>
-          <button className="start" type="button" onClick={handleStart}>
-            {error || "Start"}
+          <button className="start" type="button" onClick={handleStart} disabled={isStarting}>
+            {error || (isStarting ? "Starting..." : "Start")}
           </button>
           <p className="setup-note">Recommended: Hold phone horizontally. Add to Home Screen for fullscreen mode</p>
         </form>

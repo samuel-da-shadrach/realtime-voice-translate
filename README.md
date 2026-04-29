@@ -20,6 +20,9 @@ This app and README was written using OpenAI Codex GPT-5.5.
 - Shows the last 30 word-like translated segments.
 - Shows `???` if script-based language detection fails for the latest partial.
 - Supports `English/Hindi` and `English/Russian` language pairs from a dropdown.
+- Shows a Settings button during translation that disconnects Scribe and resets the current conversation.
+- Clears the current conversation when the page is hidden, closed, or unloaded.
+- Ignores stale translation responses after a reset.
 - Optimizes the display for mobile use, with a horizontal phone recommendation and Add to Home Screen note for fullscreen mode.
 
 ## Run
