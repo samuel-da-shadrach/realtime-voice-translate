@@ -1,10 +1,12 @@
+**May contain hallucinations!**
+
 # Realtime voice translate
 
 Minimal full-screen mobile voice translator.
 
 Uses ElevenLabs Scribe v2 Realtime and OpenAI GPT-5.4-mini
 
-This app and README was written using OpenAI Codex GPT-5.5. **May contain hallucinations!**
+This app and README was written using OpenAI Codex GPT-5.5.
 
 ## What It Does
 
