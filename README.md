@@ -1,6 +1,6 @@
-# Realtime speech translate
+# Realtime voice translate
 
-Minimal full-screen mobile speech translator. 
+Minimal full-screen mobile voice translator.
 
 Uses ElevenLabs Scribe v2 Realtime and OpenAI GPT-5.4-mini
 

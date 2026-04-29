@@ -1,6 +1,6 @@
 {
-  "name": "Scribe Last Five",
-  "short_name": "Scribe",
+  "name": "Realtime voice translate",
+  "short_name": "Voice Translate",
   "start_url": "/",
   "scope": "/",
   "display": "fullscreen",
