@@ -15,7 +15,7 @@ This app was written using OpenAI Codex GPT-5.5.
 - Displays only the latest available translation for the latest segment.
 - Shows the last 30 word-like translated segments.
 - Shows `???` if script-based language detection fails for the latest partial.
-- Defaults to the `English/Hindi` language pair.
+- Supports `English/Hindi` and `English/Russian` language pairs from a dropdown.
 - Optimizes the display for mobile use, with a horizontal phone recommendation and Add to Home Screen note for fullscreen mode.
 
 ## Run

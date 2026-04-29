@@ -22,7 +22,8 @@ button {
   font: inherit;
 }
 
-input {
+input,
+select {
   min-width: 0;
   border: 1px solid #3a3a3a;
   border-radius: 8px;
@@ -34,7 +35,8 @@ input {
   outline: none;
 }
 
-input:focus {
+input:focus,
+select:focus {
   border-color: #8ee7ff;
 }
 

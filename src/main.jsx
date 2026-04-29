@@ -29,6 +29,8 @@ const SCRIPT_PATTERNS = [
   ["Thai", /\p{Script=Thai}/u],
 ];
 
+const LANGUAGE_PAIR_OPTIONS = ["English/Hindi", "English/Russian"];
+
 function lastWords(text, count) {
   if (count <= 0) {
     return "";
@@ -103,6 +105,12 @@ function parseLanguagePair(value) {
   return ["English", "Hindi"];
 }
 
+function normalizeLanguagePairValue(value) {
+  const parsed = parseLanguagePair(value);
+  const normalized = parsed.join("/");
+  return LANGUAGE_PAIR_OPTIONS.includes(normalized) ? normalized : LANGUAGE_PAIR_OPTIONS[0];
+}
+
 function detectDominantScript(text) {
   const counts = new Map();
 
@@ -143,7 +151,7 @@ function oppositeLanguage(language, pair) {
 }
 
 function App() {
-  const [languagePair, setLanguagePair] = useState(getLanguagePair);
+  const [languagePair, setLanguagePair] = useState(() => normalizeLanguagePairValue(getLanguagePair()));
   const [displayText, setDisplayText] = useState("");
   const [error, setError] = useState("");
   const parsedLanguagePair = useMemo(() => parseLanguagePair(languagePair), [languagePair]);
@@ -302,13 +310,16 @@ function App() {
         <form className="settings" onSubmit={(event) => event.preventDefault()}>
           <label className="field">
             <span>Language pair</span>
-            <input
-              type="text"
+            <select
               value={languagePair}
-              autoCapitalize="words"
-              autoComplete="off"
               onChange={(event) => setLanguagePair(event.target.value)}
-            />
+            >
+              {LANGUAGE_PAIR_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
           </label>
           <button className="start" type="button" onClick={handleStart}>
             {error || "Start"}
