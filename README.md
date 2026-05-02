@@ -17,7 +17,7 @@ This app and README was written using OpenAI Codex GPT-5.5.
 - Sends each partial transcript to OpenAI for translation without waiting for earlier partials.
 - Uses `gpt-5.4-mini` with reasoning effort `none` for translation.
 - Displays only the latest available translation for the latest segment.
-- Shows the last 30 word-like translated segments.
+- Bottom-aligns the full latest translation and clips older overflowing lines off-screen.
 - Shows `???` if script-based language detection fails for the latest partial.
 - Supports `English/Hindi` and `English/Russian` language pairs from a dropdown.
 - Shows a Settings button during translation that disconnects Scribe and resets the current conversation.

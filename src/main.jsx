@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { CommitStrategy, useScribe } from "@elevenlabs/react";
 import "./styles.css";
@@ -30,44 +30,6 @@ const SCRIPT_PATTERNS = [
 ];
 
 const LANGUAGE_PAIR_OPTIONS = ["English/Hindi", "English/Russian"];
-
-function lastWords(text, count) {
-  if (count <= 0) {
-    return "";
-  }
-
-  const normalized = text.replace(/\s+/g, " ").trim();
-
-  if (!normalized) {
-    return "";
-  }
-
-  if (typeof Intl?.Segmenter !== "function") {
-    return normalized.split(" ").filter(Boolean).slice(-count).join(" ");
-  }
-
-  const segments = Array.from(new Intl.Segmenter(undefined, { granularity: "word" }).segment(normalized));
-  let wordsSeen = 0;
-  let startIndex = segments.length;
-
-  for (let i = segments.length - 1; i >= 0; i -= 1) {
-    if (segments[i].isWordLike) {
-      wordsSeen += 1;
-    }
-
-    startIndex = i;
-
-    if (wordsSeen === count) {
-      break;
-    }
-  }
-
-  return segments
-    .slice(startIndex)
-    .map((segment) => segment.segment)
-    .join("")
-    .trim();
-}
 
 function getLanguagePair() {
   const params = new URLSearchParams(window.location.search);
@@ -157,7 +119,7 @@ function App() {
   const [showSettings, setShowSettings] = useState(true);
   const [isStarting, setIsStarting] = useState(false);
   const [isWakeLockUnsupported, setIsWakeLockUnsupported] = useState(() => !("wakeLock" in navigator));
-  const parsedLanguagePair = useMemo(() => parseLanguagePair(languagePair), [languagePair]);
+  const parsedLanguagePair = parseLanguagePair(languagePair);
   const conversationRef = useRef(0);
   const wakeLockRef = useRef(null);
   const currentSegmentRef = useRef(0);
@@ -346,10 +308,6 @@ function App() {
     };
   }, [scribe]);
 
-  const visibleText = useMemo(() => {
-    return lastWords(displayText, 30);
-  }, [displayText]);
-
   async function start() {
     const conversation = resetConversation();
 
@@ -417,7 +375,7 @@ function App() {
             Settings
           </button>
           <div className="caption" aria-live="polite">
-            {visibleText || " "}
+            {displayText || " "}
           </div>
         </>
       ) : (
