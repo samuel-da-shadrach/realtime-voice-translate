@@ -23,6 +23,7 @@ This app and README was written using OpenAI Codex GPT-5.5.
 - Shows a Settings button during translation that disconnects Scribe and resets the current conversation.
 - Clears the current conversation when the page is hidden, closed, or unloaded.
 - Ignores stale translation responses after a reset.
+- Requests a screen wake lock while translating when the browser supports it.
 - Optimizes the display for mobile use, with a horizontal phone recommendation and Add to Home Screen note for fullscreen mode.
 
 ## Run

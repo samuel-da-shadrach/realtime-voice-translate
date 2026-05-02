@@ -156,8 +156,10 @@ function App() {
   const [error, setError] = useState("");
   const [showSettings, setShowSettings] = useState(true);
   const [isStarting, setIsStarting] = useState(false);
+  const [isWakeLockUnsupported, setIsWakeLockUnsupported] = useState(() => !("wakeLock" in navigator));
   const parsedLanguagePair = useMemo(() => parseLanguagePair(languagePair), [languagePair]);
   const conversationRef = useRef(0);
+  const wakeLockRef = useRef(null);
   const currentSegmentRef = useRef(0);
   const nextPartialStartsSegmentRef = useRef(false);
   const latestPartialOrderRef = useRef(0);
@@ -182,9 +184,46 @@ function App() {
     };
   }, []);
 
+  async function releaseWakeLock() {
+    const wakeLock = wakeLockRef.current;
+    wakeLockRef.current = null;
+
+    if (!wakeLock) {
+      return;
+    }
+
+    try {
+      await wakeLock.release();
+    } catch (err) {
+      console.warn("Wake lock release failed:", err);
+    }
+  }
+
+  async function requestWakeLock() {
+    if (!("wakeLock" in navigator)) {
+      setIsWakeLockUnsupported(true);
+      return;
+    }
+
+    try {
+      await releaseWakeLock();
+      const wakeLock = await navigator.wakeLock.request("screen");
+      wakeLockRef.current = wakeLock;
+      setIsWakeLockUnsupported(false);
+      wakeLock.addEventListener("release", () => {
+        if (wakeLockRef.current === wakeLock) {
+          wakeLockRef.current = null;
+        }
+      });
+    } catch (err) {
+      console.warn("Wake lock request failed:", err);
+    }
+  }
+
   function resetConversation() {
     const conversation = conversationRef.current + 1;
     conversationRef.current = conversation;
+    void releaseWakeLock();
     setError("");
     setDisplayText("");
     currentSegmentRef.current = 0;
@@ -338,6 +377,7 @@ function App() {
         noiseSuppression: true,
       },
     });
+    await requestWakeLock();
 
     if (conversation !== conversationRef.current) {
       scribe.disconnect();
@@ -399,6 +439,9 @@ function App() {
             {error || (isStarting ? "Starting..." : "Start")}
           </button>
           <p className="setup-note">Recommended: Hold phone horizontally. Add to Home Screen for fullscreen mode</p>
+          {isWakeLockUnsupported ? (
+            <p className="setup-note">If the screen dims, disable Auto-Lock while using this app.</p>
+          ) : null}
         </form>
       )}
     </main>
